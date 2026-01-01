@@ -1,16 +1,86 @@
-# React + Vite
+# Realm Tracker
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A fantastical board game health tracker with webcam portraits, animated damage/healing effects, and arcane shields.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- Track vitality and arcane shields for multiple players
+- Webcam photo capture for player portraits
+- Fantastical UI with animations for damage/healing
+- Shields absorb damage before health
+- Responsive design for desktop and mobile
 
-## React Compiler
+## Development
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+# Install dependencies
+npm install
 
-## Expanding the ESLint configuration
+# Run development server
+npm run dev
+```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Docker Deployment
+
+### Build the Docker image
+
+```bash
+docker build -t realm-tracker .
+```
+
+### Run the container
+
+```bash
+docker run -d -p 8080:80 --name realm-tracker realm-tracker
+```
+
+The app will be available at `http://your-server-ip:8080`
+
+### Using a different port
+
+To run on a different port (e.g., 3000):
+
+```bash
+docker run -d -p 3000:80 --name realm-tracker realm-tracker
+```
+
+### Stop and remove the container
+
+```bash
+docker stop realm-tracker
+docker rm realm-tracker
+```
+
+### Update deployment
+
+To deploy a new version:
+
+```bash
+# Pull latest code
+git pull
+
+# Rebuild and restart
+docker stop realm-tracker
+docker rm realm-tracker
+docker build -t realm-tracker .
+docker run -d -p 8080:80 --name realm-tracker realm-tracker
+```
+
+## Docker Compose (optional)
+
+Create a `docker-compose.yml` file:
+
+```yaml
+services:
+  realm-tracker:
+    build: .
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+```
+
+Then run:
+
+```bash
+docker compose up -d
+```
