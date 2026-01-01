@@ -20,6 +20,20 @@ npm install
 npm run dev
 ```
 
+## Important: Camera Access Requires HTTPS
+
+Modern browsers require **HTTPS** (secure connection) to access the camera, except when running on `localhost`.
+
+If you deploy this with Docker and access it via `http://your-server-ip`, the camera will not work. You have several options:
+
+1. **Use HTTPS** - Set up SSL certificates (recommended for production)
+2. **SSH Port Forwarding** - Forward the port to localhost for testing:
+   ```bash
+   ssh -L 8080:localhost:8080 your-server
+   # Then access at http://localhost:8080
+   ```
+3. **Cloudflare Tunnel** or similar services that provide HTTPS automatically
+
 ## Docker Deployment
 
 ### Build the Docker image

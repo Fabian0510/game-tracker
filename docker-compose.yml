@@ -1,0 +1,20 @@
+services:
+  realm-tracker:
+    build: .
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+
+  # Optional: nginx reverse proxy with SSL
+  # Uncomment and configure if you want HTTPS
+  # nginx:
+  #   image: nginx:alpine
+  #   ports:
+  #     - "443:443"
+  #     - "80:80"
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - /path/to/ssl/certs:/etc/nginx/ssl:ro
+  #   depends_on:
+  #     - realm-tracker
+  #   restart: unless-stopped
