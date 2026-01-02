@@ -18,28 +18,45 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
     const healthDiff = player.health - prevHealthRef.current
     const shieldsDiff = player.shields - prevShieldsRef.current
 
-    if (healthDiff < 0) {
-      setHealthAnimation('damage')
-      setFloatingNumber({ value: healthDiff, type: 'damage' })
-    } else if (healthDiff > 0) {
-      setHealthAnimation('heal')
-      setFloatingNumber({ value: `+${healthDiff}`, type: 'heal' })
-    } else if (shieldsDiff < 0 && prevShieldsRef.current > 0) {
-      setHealthAnimation('shield-break')
-      setFloatingNumber({ value: shieldsDiff, type: 'shield' })
+    if (healthDiff !== 0 || (shieldsDiff < 0 && prevShieldsRef.current > 0)) {
+      // Clear animation first to force restart
+      setHealthAnimation(null)
+      setFloatingNumber(null)
+
+      // Use requestAnimationFrame to set new animation in next frame
+      requestAnimationFrame(() => {
+        // Check if player just died
+        if (player.health <= 0 && prevHealthRef.current > 0) {
+          setHealthAnimation('death')
+          setFloatingNumber({ value: 'DEFEATED', type: 'death' })
+        } else if (healthDiff < 0) {
+          setHealthAnimation('damage')
+          setFloatingNumber({ value: healthDiff, type: 'damage' })
+        } else if (healthDiff > 0) {
+          setHealthAnimation('heal')
+          setFloatingNumber({ value: `+${healthDiff}`, type: 'heal' })
+        } else if (shieldsDiff < 0 && prevShieldsRef.current > 0) {
+          setHealthAnimation('shield-break')
+          setFloatingNumber({ value: shieldsDiff, type: 'shield' })
+        }
+      })
     }
 
     prevHealthRef.current = player.health
     prevShieldsRef.current = player.shields
+  }, [player.health, player.shields])
 
-    if (healthDiff !== 0 || shieldsDiff < 0) {
+  // Separate effect to clear animations after they complete
+  useEffect(() => {
+    if (healthAnimation) {
+      const duration = healthAnimation === 'death' ? 1000 : 600
       const timer = setTimeout(() => {
         setHealthAnimation(null)
         setFloatingNumber(null)
-      }, 600)
+      }, duration)
       return () => clearTimeout(timer)
     }
-  }, [player.health, player.shields])
+  }, [healthAnimation])
 
   const startCamera = useCallback(async () => {
     setCameraError(null)
@@ -167,21 +184,36 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
     if (healthAnimation === 'damage') return 'animate-damage'
     if (healthAnimation === 'heal') return 'animate-heal'
     if (healthAnimation === 'shield-break') return 'animate-shield-break'
+    if (healthAnimation === 'death') return 'animate-death'
     return ''
   }
 
   return (
-    <div className={`relative bg-gradient-to-b from-slate-800 via-slate-850 to-slate-900 rounded-2xl shadow-2xl overflow-hidden border-2 border-amber-900/30 hover:border-amber-500/50 transition-all duration-300 ${getAnimationClass()}`}>
+    <div className={`relative rounded-2xl shadow-2xl overflow-hidden border-2 transition-all duration-300 ${getAnimationClass()} ${
+      player.health <= 0
+        ? 'bg-gradient-to-b from-gray-700 via-gray-800 to-gray-900 border-gray-600/50 opacity-70 grayscale'
+        : player.shields > 0
+        ? 'bg-gradient-to-b from-slate-800 via-slate-850 to-slate-900 border-cyan-400/60 shadow-[0_0_30px_rgba(34,211,238,0.6)] hover:shadow-[0_0_40px_rgba(34,211,238,0.8)]'
+        : 'bg-gradient-to-b from-slate-800 via-slate-850 to-slate-900 border-amber-900/30 hover:border-amber-500/50'
+    }`}>
       {/* Ornate corner decorations */}
-      <div className="absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 border-amber-500/40 rounded-tl-2xl" />
-      <div className="absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 border-amber-500/40 rounded-tr-2xl" />
-      <div className="absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 border-amber-500/40 rounded-bl-2xl" />
-      <div className="absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 border-amber-500/40 rounded-br-2xl" />
+      <div className={`absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 rounded-tl-2xl transition-colors duration-300 ${
+        player.health <= 0 ? 'border-gray-600/40' : player.shields > 0 ? 'border-cyan-400/60' : 'border-amber-500/40'
+      }`} />
+      <div className={`absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 rounded-tr-2xl transition-colors duration-300 ${
+        player.health <= 0 ? 'border-gray-600/40' : player.shields > 0 ? 'border-cyan-400/60' : 'border-amber-500/40'
+      }`} />
+      <div className={`absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 rounded-bl-2xl transition-colors duration-300 ${
+        player.health <= 0 ? 'border-gray-600/40' : player.shields > 0 ? 'border-cyan-400/60' : 'border-amber-500/40'
+      }`} />
+      <div className={`absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 rounded-br-2xl transition-colors duration-300 ${
+        player.health <= 0 ? 'border-gray-600/40' : player.shields > 0 ? 'border-cyan-400/60' : 'border-amber-500/40'
+      }`} />
 
       {/* Floating damage/heal number */}
       {floatingNumber && (
         <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none animate-float-up
-          ${floatingNumber.type === 'damage' ? 'text-red-500' : floatingNumber.type === 'heal' ? 'text-emerald-400' : 'text-blue-400'}
+          ${floatingNumber.type === 'damage' ? 'text-red-500' : floatingNumber.type === 'heal' ? 'text-emerald-400' : floatingNumber.type === 'death' ? 'text-gray-400 text-4xl' : 'text-blue-400'}
           text-5xl font-bold drop-shadow-[0_0_10px_currentColor]`}
         >
           {floatingNumber.value}
@@ -329,42 +361,28 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
 
         {/* Health Section */}
         <div className="mb-4">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-amber-200/70 text-sm font-medium flex items-center gap-2 uppercase tracking-wider">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-500 animate-pulse" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
-              </svg>
-              Vitality
-            </span>
-            <div className={`relative bg-gradient-to-r ${getHealthColor()} text-white text-3xl font-bold px-4 py-1 rounded-lg shadow-lg ${getHealthGlow()} min-w-[4rem] text-center`}>
-              <span className="drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">{player.health}</span>
-              <div className="absolute inset-0 bg-white/20 rounded-lg opacity-0 hover:opacity-100 transition-opacity" />
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => onAdjustHealth(-5)}
-              className="flex-1 bg-gradient-to-b from-red-800 to-red-950 hover:from-red-700 hover:to-red-900 text-red-200 font-bold py-2.5 px-3 rounded-lg transition-all border border-red-700/50 hover:border-red-500 shadow-lg hover:shadow-red-900/50 active:scale-95"
-            >
-              <span className="drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]">-5</span>
-            </button>
-            <button
-              onClick={() => onAdjustHealth(-1)}
-              className="flex-1 bg-gradient-to-b from-red-700 to-red-900 hover:from-red-600 hover:to-red-800 text-red-200 font-bold py-2.5 px-3 rounded-lg transition-all border border-red-600/50 hover:border-red-400 shadow-lg hover:shadow-red-800/50 active:scale-95"
-            >
-              <span className="drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]">-1</span>
-            </button>
+          <span className="text-amber-200/70 text-sm font-medium flex items-center justify-center gap-2 uppercase tracking-wider mb-3">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-500 animate-pulse" viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
+            </svg>
+            Vitality
+          </span>
+          <div className="flex flex-col items-center gap-3">
             <button
               onClick={() => onAdjustHealth(1)}
-              className="flex-1 bg-gradient-to-b from-emerald-600 to-emerald-800 hover:from-emerald-500 hover:to-emerald-700 text-emerald-100 font-bold py-2.5 px-3 rounded-lg transition-all border border-emerald-500/50 hover:border-emerald-400 shadow-lg hover:shadow-emerald-800/50 active:scale-95"
+              className="w-32 bg-gradient-to-b from-emerald-600 to-emerald-800 hover:from-emerald-500 hover:to-emerald-700 text-emerald-100 font-bold py-2.5 px-3 rounded-lg transition-all border border-emerald-500/50 hover:border-emerald-400 shadow-lg hover:shadow-emerald-800/50 active:scale-95"
             >
               <span className="drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]">+1</span>
             </button>
+            <div className={`relative bg-gradient-to-r ${getHealthColor()} text-white text-6xl font-black px-8 py-4 rounded-xl shadow-2xl ${getHealthGlow()} min-w-[8rem] text-center border-4 border-white/20`}>
+              <span className="drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)]">{player.health}</span>
+              <div className="absolute inset-0 bg-white/20 rounded-xl opacity-0 hover:opacity-100 transition-opacity" />
+            </div>
             <button
-              onClick={() => onAdjustHealth(5)}
-              className="flex-1 bg-gradient-to-b from-emerald-500 to-emerald-700 hover:from-emerald-400 hover:to-emerald-600 text-emerald-100 font-bold py-2.5 px-3 rounded-lg transition-all border border-emerald-400/50 hover:border-emerald-300 shadow-lg hover:shadow-emerald-700/50 active:scale-95"
+              onClick={() => onAdjustHealth(-1)}
+              className="w-32 bg-gradient-to-b from-red-700 to-red-900 hover:from-red-600 hover:to-red-800 text-red-200 font-bold py-2.5 px-3 rounded-lg transition-all border border-red-600/50 hover:border-red-400 shadow-lg hover:shadow-red-800/50 active:scale-95"
             >
-              <span className="drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]">+5</span>
+              <span className="drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]">-1</span>
             </button>
           </div>
         </div>
@@ -419,6 +437,9 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
       )}
       {healthAnimation === 'shield-break' && (
         <div className="absolute inset-0 bg-cyan-500/30 pointer-events-none animate-flash" />
+      )}
+      {healthAnimation === 'death' && (
+        <div className="absolute inset-0 bg-gray-900/60 pointer-events-none animate-flash" />
       )}
     </div>
   )

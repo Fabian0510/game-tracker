@@ -83,3 +83,35 @@ body {
 .animate-shield-glow {
   animation: shield-glow 2s ease-in-out infinite;
 }
+
+/* Death animation */
+@keyframes death {
+  0% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  15% {
+    transform: scale(1.05) rotate(2deg);
+  }
+  30% {
+    transform: scale(0.95) rotate(-2deg);
+  }
+  45% {
+    transform: scale(1.02) rotate(1deg);
+  }
+  60% {
+    transform: scale(0.98) rotate(-1deg);
+  }
+  75% {
+    transform: scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(0.97) rotate(0deg);
+    opacity: 0.7;
+  }
+}
+
+.animate-death {
+  animation: death 1s ease-out forwards;
+}
