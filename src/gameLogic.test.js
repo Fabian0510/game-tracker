@@ -7,6 +7,7 @@ import {
   createPlayer,
   describeChange,
   getHealthTier,
+  isShieldShattered,
   nextPlayerId,
   resetPlayer,
 } from './gameLogic.js'
@@ -103,9 +104,13 @@ describe('describeChange', () => {
     assert.deepEqual(describeChange(s(5), s(7)), { type: 'heal', label: '+2' })
   })
 
-  it('reports shield loss, including shields fully depleting', () => {
+  it('reports partial shield loss', () => {
     assert.deepEqual(describeChange(s(5, 3), s(5, 1)), { type: 'shield-break', label: '-2' })
-    assert.deepEqual(describeChange(s(5, 1), s(5, 0)), { type: 'shield-break', label: '-1' })
+  })
+
+  it('reports a shatter when the last shields are lost', () => {
+    assert.deepEqual(describeChange(s(5, 1), s(5, 0)), { type: 'shatter', label: 'SHATTERED' })
+    assert.deepEqual(describeChange(s(5, 4), s(5, 0)), { type: 'shatter', label: 'SHATTERED' })
   })
 
   it('prefers the health effect when shields and health both drop', () => {
@@ -113,7 +118,20 @@ describe('describeChange', () => {
   })
 
   it('reports nothing for shield gains or no change', () => {
+    assert.equal(describeChange(s(5, 0), s(5, 0)), null)
     assert.equal(describeChange(s(5, 0), s(5, 3)), null)
     assert.equal(describeChange(s(5, 1), s(5, 1)), null)
+  })
+})
+
+describe('isShieldShattered', () => {
+  const s = (health, shields = 0) => ({ health, shields })
+
+  it('is true only when shields drop from some to none', () => {
+    assert.equal(isShieldShattered(s(5, 1), s(5, 0)), true)
+    assert.equal(isShieldShattered(s(5, 3), s(2, 0)), true)
+    assert.equal(isShieldShattered(s(5, 3), s(5, 1)), false)
+    assert.equal(isShieldShattered(s(5, 0), s(4, 0)), false)
+    assert.equal(isShieldShattered(s(5, 0), s(5, 2)), false)
   })
 })

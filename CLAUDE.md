@@ -102,16 +102,22 @@ Both paths go through `src/imageUtils.js`, which downscales to max 640px and enc
 Custom keyframe animations triggered by state changes in PlayerCard:
 - `animate-damage` - Shake on health loss
 - `animate-heal` - Glow pulse on health gain
-- `animate-shield-break` - Wobble when shields deplete
+- `animate-shield-break` - Wobble when shields are lost
+- `ShieldShatter.jsx` (`.shatter-shard`, `.shatter-cracks`, `.shatter-shockwave`) - The barrier cracks and shatters into flying glass shards when the last shield breaks
 - `animate-float-up` - Floating damage/heal numbers
 - `animate-flash` - Screen flash overlays
 - `animate-shield-glow` - Pulsing `drop-shadow` on the shield emblem (follows the SVG outline)
 - `animate-spin-slow`, `.ember` - Background magic circle and embers
+- `animate-summon` + `SummonEffect.jsx` (`animate-summon-circle`, `-beam`, `.summon-spark`) - Entrance when "Summon Hero" is pressed; `animate-summon-star` spins the button's star
 
 `PlayerCard` keeps the previous health/shields in state and, when props change, calls `describeChange(prev, next)` *during render* (React's "adjust state on prop change" pattern - not in an effect, which the `react-hooks/set-state-in-effect` lint rule forbids). That sets an `effect` with an incrementing `id`:
 - The floating number and flash overlay are keyed by `id`, so every hit remounts them and restarts the animation
 - The card's own animation class is restarted via `getAnimations()` cancel/play in an effect, then the effect is cleared after its duration
 - `prefers-reduced-motion` disables the shake/wobble/pulse animations
+
+**Shield shatter:** `isShieldShattered(prev, next)` (shields >0 → 0) is checked separately from `describeChange`, so the shatter also plays when the same hit wounds. It sets a `shatterId` that keys `<ShieldShatter>`. Shards are full-card `clip-path` polygons from a fixed radial break pattern, each flying out from the impact point and falling. When only shields change, `describeChange` returns `shatter` with a "SHATTERED" label.
+
+**Summon entrance:** `App` records `lastSummon = { playerId, seq }` in `addPlayer` and passes `summoned` to that card. `PlayerCard` reads it only on mount (`useState(summoned)`), so heroes restored from storage don't animate. The card sits in a `relative isolate` wrapper so `SummonEffect` can put the magic circle behind it (`-z-10`) and the light pillar and sparks in front. The card also scrolls into view (`block: 'nearest'`). Under reduced motion it becomes a plain fade (`summon-fade`), and the shatter shards are hidden (the cyan flash remains).
 
 ## Tech Stack
 

@@ -28,13 +28,17 @@ const EMBERS = [
 
 function App() {
   const [players, setPlayers] = useState(() => loadPlayers() ?? [createPlayer(1)])
+  // Only freshly summoned heroes animate in (not ones restored from storage); seq replays the button flourish
+  const [lastSummon, setLastSummon] = useState(null)
 
   useEffect(() => {
     savePlayers(players)
   }, [players])
 
   const addPlayer = () => {
-    setPlayers(prev => [...prev, createPlayer(nextPlayerId(prev))])
+    const id = nextPlayerId(players)
+    setPlayers(prev => [...prev, createPlayer(id)])
+    setLastSummon(prev => ({ playerId: id, seq: (prev?.seq ?? 0) + 1 }))
   }
 
   const removePlayer = (id) => {
@@ -100,7 +104,14 @@ function App() {
             onClick={addPlayer}
             className="font-heading uppercase tracking-[0.18em] text-sm font-bold text-amber-950 bg-gradient-to-b from-amber-200 via-amber-400 to-amber-700 hover:from-amber-100 hover:via-amber-300 hover:to-amber-600 py-3 px-7 rounded-md border border-amber-200/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_0_24px_rgba(251,191,36,0.25)] hover:shadow-[inset_0_1px_0_rgba(255,255,255,0.6),0_0_32px_rgba(251,191,36,0.45)] transition-all duration-300 flex items-center gap-2"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <svg
+              key={lastSummon?.seq ?? 0}
+              xmlns="http://www.w3.org/2000/svg"
+              className={`h-4 w-4 ${lastSummon ? 'animate-summon-star' : ''}`}
+              viewBox="0 0 20 20"
+              fill="currentColor"
+              aria-hidden="true"
+            >
               <path d="M10 1l2.2 6.8L19 10l-6.8 2.2L10 19l-2.2-6.8L1 10l6.8-2.2z" />
             </svg>
             Summon Hero
@@ -123,6 +134,7 @@ function App() {
             <PlayerCard
               key={player.id}
               player={player}
+              summoned={lastSummon?.playerId === player.id}
               onRemove={() => removePlayer(player.id)}
               onUpdate={(updates) => updatePlayer(player.id, updates)}
               onAdjustHealth={(amount) => adjustHealth(player.id, amount)}

@@ -154,6 +154,126 @@ body {
   animation: death 1s ease-out forwards;
 }
 
+/* Summoning a new hero: circle spins up, light pillar flares, card materialises, sparks burst */
+@keyframes summon-card {
+  0%, 22% {
+    opacity: 0;
+    transform: translateY(18px) scale(0.92);
+    filter: brightness(2.5) blur(8px);
+  }
+  55% {
+    opacity: 1;
+    transform: translateY(0) scale(1.02);
+    filter: brightness(1.6) blur(0);
+    box-shadow: 0 0 60px 8px rgba(251, 191, 36, 0.55);
+  }
+  100% {
+    opacity: 1;
+    transform: none;
+    filter: none;
+  }
+}
+
+.animate-summon {
+  animation: summon-card 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes summon-circle {
+  0% { opacity: 0; transform: scale(0.2) rotate(-90deg); }
+  25% { opacity: 1; }
+  60% { opacity: 0.9; transform: scale(1) rotate(60deg); }
+  100% { opacity: 0; transform: scale(1.25) rotate(120deg); }
+}
+
+.animate-summon-circle {
+  animation: summon-circle 1.5s ease-out both;
+}
+
+@keyframes summon-beam {
+  0%, 20% { opacity: 0; transform: scaleX(0.05); }
+  40% { opacity: 1; transform: scaleX(1); }
+  100% { opacity: 0; transform: scaleX(3); }
+}
+
+.animate-summon-beam {
+  animation: summon-beam 1.5s ease-out both;
+}
+
+@keyframes summon-spark {
+  0% { opacity: 0; transform: translate(0, 0) scale(1); }
+  10% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--spark-dx), var(--spark-dy)) scale(0.2); }
+}
+
+.summon-spark {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  border-radius: 9999px;
+  background: #fde68a;
+  box-shadow: 0 0 10px 3px rgba(251, 191, 36, 0.85);
+  animation: summon-spark 1s ease-out both;
+}
+
+/* The Summon Hero button's star spins on each summon */
+@keyframes summon-star {
+  0% { transform: rotate(0) scale(1); }
+  50% { transform: rotate(180deg) scale(1.7); filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.9)); }
+  100% { transform: rotate(360deg) scale(1); }
+}
+
+.animate-summon-star {
+  animation: summon-star 0.7s ease-in-out;
+}
+
+@keyframes summon-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Arcane shield shatter: barrier appears, cracks flash, shards fly out and fall */
+@keyframes shatter-appear {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.shatter-fx {
+  animation: shatter-appear 80ms ease-out both;
+}
+
+@keyframes shard-fly {
+  0% { transform: translate(0, 0) rotate(0); opacity: 1; }
+  100% { transform: translate(var(--shard-dx), calc(var(--shard-dy) + 90px)) rotate(var(--shard-rot)); opacity: 0; }
+}
+
+.shatter-shard {
+  position: absolute;
+  inset: 0;
+  mix-blend-mode: screen;
+  animation: shard-fly 0.85s cubic-bezier(0.3, 0.6, 0.6, 1) both;
+}
+
+@keyframes shatter-cracks {
+  0% { opacity: 0; }
+  10%, 30% { opacity: 1; }
+  45%, 100% { opacity: 0; }
+}
+
+.shatter-cracks {
+  filter: drop-shadow(0 0 3px rgba(34, 211, 238, 0.9));
+  animation: shatter-cracks 0.6s ease-out both;
+}
+
+@keyframes shatter-shockwave {
+  0% { opacity: 1; transform: scale(0.2); }
+  100% { opacity: 0; transform: scale(4); }
+}
+
+.shatter-shockwave {
+  box-shadow: 0 0 16px rgba(34, 211, 238, 0.8), inset 0 0 12px rgba(34, 211, 238, 0.6);
+  animation: shatter-shockwave 0.6s ease-out 150ms both;
+}
+
 /* Respect users who prefer reduced motion: keep the colour flashes, drop the shaking, pulsing and drifting */
 @media (prefers-reduced-motion: reduce) {
   .animate-damage,
@@ -165,7 +285,17 @@ body {
     animation: none;
   }
 
-  .ember {
+  .ember,
+  .summon-fx,
+  .shatter-fx {
     display: none;
+  }
+
+  .animate-summon-star {
+    animation: none;
+  }
+
+  .animate-summon {
+    animation: summon-fade 0.4s ease-out both;
   }
 }

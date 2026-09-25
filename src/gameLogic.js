@@ -46,6 +46,13 @@ export function describeChange(prev, next) {
   if (prev.health > 0 && next.health <= 0) return { type: 'death', label: 'DEFEATED' }
   if (healthDiff < 0) return { type: 'damage', label: `${healthDiff}` }
   if (healthDiff > 0) return { type: 'heal', label: `+${healthDiff}` }
+  if (isShieldShattered(prev, next)) return { type: 'shatter', label: 'SHATTERED' }
   if (shieldsDiff < 0) return { type: 'shield-break', label: `${shieldsDiff}` }
   return null
+}
+
+// True when the last of a player's shields is lost - plays the barrier-shatter effect,
+// even if the same hit also carried through to health.
+export function isShieldShattered(prev, next) {
+  return prev.shields > 0 && next.shields === 0
 }
