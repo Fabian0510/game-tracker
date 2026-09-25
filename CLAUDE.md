@@ -87,6 +87,16 @@ Both paths go through `src/imageUtils.js`, which downscales to max 640px and enc
 - Camera stream initialization happens in `useEffect` after component renders to ensure video element exists; the effect's cleanup stops the stream (on close or unmount)
 - Unsupported contexts (no `navigator.mediaDevices`) and permission/device errors show specific messages
 
+### Visual Design (fantasy "arcane tome" theme)
+
+- **Fonts** (Google Fonts, linked in `index.html`; fall back to Georgia/serif offline), exposed as Tailwind theme fonts in `index.css`:
+  - `font-display` - Cinzel Decorative, page title only
+  - `font-heading` - Cinzel, for names, labels, buttons
+  - `font-body` - Cormorant Garamond, the body default, for flavour text and **all numerals** (with `lining-nums`), because Cinzel's "1" reads as a capital "I"
+- **Ornaments** (`src/components/Ornaments.jsx`): `CornerFiligree`, `Divider`, `ShieldEmblem` and the background `MagicCircle`. They are SVGs tinted via `currentColor`, so set colour with `text-*` classes. Gradients use `useId()`; a gradient on a straight line must use `gradientUnits="userSpaceOnUse"`, or it won't render.
+- **Card theming**: `CARD_STYLES` in PlayerCard has `frame` / `trim` / `portrait` classes for the normal (gold), shielded (cyan) and defeated (grey) states. Vitality is a radial-gradient gem coloured by `HEALTH_STYLES[tier]`.
+- **Background**: a fixed ambient layer in `App.jsx` with a slowly rotating magic circle, glows, rising `.ember` particles (fixed positions in `EMBERS` so renders stay pure), `.bg-grain` noise texture and a vignette
+
 ### Animation System (index.css)
 
 Custom keyframe animations triggered by state changes in PlayerCard:
@@ -95,6 +105,8 @@ Custom keyframe animations triggered by state changes in PlayerCard:
 - `animate-shield-break` - Wobble when shields deplete
 - `animate-float-up` - Floating damage/heal numbers
 - `animate-flash` - Screen flash overlays
+- `animate-shield-glow` - Pulsing `drop-shadow` on the shield emblem (follows the SVG outline)
+- `animate-spin-slow`, `.ember` - Background magic circle and embers
 
 `PlayerCard` keeps the previous health/shields in state and, when props change, calls `describeChange(prev, next)` *during render* (React's "adjust state on prop change" pattern - not in an effect, which the `react-hooks/set-state-in-effect` lint rule forbids). That sets an `effect` with an incrementing `id`:
 - The floating number and flash overlay are keyed by `id`, so every hit remounts them and restarts the animation

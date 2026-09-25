@@ -1,42 +1,54 @@
 import { useRef, useState, useEffect } from 'react'
 import { describeChange, getHealthTier } from '../gameLogic'
 import { fileToPortraitDataUrl, toPortraitDataUrl } from '../imageUtils'
+import { CornerFiligree, Divider, ShieldEmblem } from './Ornaments'
 
+// Vitality gem colouring per health tier (thresholds live in gameLogic.getHealthTier)
 const HEALTH_STYLES = {
-  defeated: { color: 'from-gray-600 to-gray-800', glow: 'shadow-gray-900/50' },
-  critical: { color: 'from-red-500 to-red-700', glow: 'shadow-red-500/50' },
-  warning: { color: 'from-amber-500 to-orange-600', glow: 'shadow-amber-500/50' },
-  healthy: { color: 'from-emerald-400 to-green-600', glow: 'shadow-emerald-500/50' },
+  defeated: { gem: 'from-stone-400 via-stone-600 to-stone-900', glow: 'shadow-[0_0_24px_rgba(0,0,0,0.6)]' },
+  critical: { gem: 'from-red-400 via-red-600 to-red-950', glow: 'shadow-[0_0_28px_rgba(239,68,68,0.55)]' },
+  warning: { gem: 'from-amber-300 via-orange-500 to-orange-950', glow: 'shadow-[0_0_28px_rgba(245,158,11,0.5)]' },
+  healthy: { gem: 'from-emerald-300 via-emerald-600 to-emerald-950', glow: 'shadow-[0_0_28px_rgba(16,185,129,0.5)]' },
 }
 
 const EFFECT_STYLES = {
-  damage: { card: 'animate-damage', flash: 'bg-red-500/30', text: 'text-red-500 text-5xl', duration: 600 },
-  heal: { card: 'animate-heal', flash: 'bg-emerald-500/20', text: 'text-emerald-400 text-5xl', duration: 600 },
-  'shield-break': { card: 'animate-shield-break', flash: 'bg-cyan-500/30', text: 'text-blue-400 text-5xl', duration: 600 },
-  death: { card: 'animate-death', flash: 'bg-gray-900/60', text: 'text-gray-400 text-4xl', duration: 1000 },
+  damage: { card: 'animate-damage', flash: 'bg-red-500/30', text: 'font-body text-red-500 text-6xl', duration: 600 },
+  heal: { card: 'animate-heal', flash: 'bg-emerald-500/20', text: 'font-body text-emerald-400 text-6xl', duration: 600 },
+  'shield-break': { card: 'animate-shield-break', flash: 'bg-cyan-500/30', text: 'font-body text-cyan-300 text-6xl', duration: 600 },
+  death: { card: 'animate-death', flash: 'bg-gray-900/60', text: 'font-heading text-stone-300 text-4xl', duration: 1000 },
 }
 
+// frame: card border/glow, trim: filigree + inner rule colour, portrait: portrait frame border
 const CARD_STYLES = {
   defeated: {
-    card: 'bg-gradient-to-b from-gray-700 via-gray-800 to-gray-900 border-gray-600/50 opacity-70 grayscale',
-    corner: 'border-gray-600/40',
+    frame: 'border-stone-600/50 opacity-75 grayscale',
+    trim: 'text-stone-500/70',
+    portrait: 'border-stone-600/60',
   },
   shielded: {
-    card: 'bg-gradient-to-b from-slate-800 to-slate-900 border-cyan-400/60 shadow-[0_0_30px_rgba(34,211,238,0.6)] hover:shadow-[0_0_40px_rgba(34,211,238,0.8)]',
-    corner: 'border-cyan-400/60',
+    frame: 'border-cyan-400/60 shadow-[0_0_30px_rgba(34,211,238,0.45)] hover:shadow-[0_0_40px_rgba(34,211,238,0.7)]',
+    trim: 'text-cyan-300/80',
+    portrait: 'border-cyan-300/60',
   },
   normal: {
-    card: 'bg-gradient-to-b from-slate-800 to-slate-900 border-amber-900/30 hover:border-amber-500/50',
-    corner: 'border-amber-500/40',
+    frame: 'border-amber-700/60 shadow-[0_10px_30px_rgba(0,0,0,0.6)] hover:border-amber-500/70',
+    trim: 'text-amber-400/80',
+    portrait: 'border-amber-500/60',
   },
 }
 
 const CORNER_POSITIONS = [
-  'top-0 left-0 border-t-2 border-l-2 rounded-tl-2xl',
-  'top-0 right-0 border-t-2 border-r-2 rounded-tr-2xl',
-  'bottom-0 left-0 border-b-2 border-l-2 rounded-bl-2xl',
-  'bottom-0 right-0 border-b-2 border-r-2 rounded-br-2xl',
+  'top-1 left-1',
+  'top-1 right-1 -scale-x-100',
+  'bottom-1 left-1 -scale-y-100',
+  'bottom-1 right-1 rotate-180',
 ]
+
+const SECTION_LABEL = 'font-heading text-xs font-semibold uppercase tracking-[0.3em] text-amber-200/70 flex items-center gap-2'
+
+// Shared look for the engraved +/- buttons
+// Cinzel's numeral 1 reads as a capital I, so numbers use Cormorant Garamond lining figures
+const STEP_BUTTON = 'font-body font-bold lining-nums text-xl leading-none py-2 px-3 rounded-md border transition-all shadow-[inset_0_1px_0_rgba(255,255,255,0.15),0_3px_8px_rgba(0,0,0,0.5)] active:scale-95'
 
 // Photo controls show on mouse hover, keyboard focus, or when toggled open by a tap (touch devices have no hover)
 const HIDDEN_PHOTO_CONTROLS = 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-has-focus-visible:opacity-100 group-has-focus-visible:pointer-events-auto'
@@ -226,13 +238,15 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
   return (
     <div
       ref={cardRef}
-      className={`relative rounded-2xl shadow-2xl overflow-hidden border-2 transition-all duration-300 ${effectStyle?.card ?? ''} ${cardStyle.card}`}
+      className={`relative rounded-2xl border-2 bg-gradient-to-b from-[#261b30] via-[#18111f] to-[#0e0a13] transition-all duration-300 ${effectStyle?.card ?? ''} ${cardStyle.frame}`}
     >
-      {/* Ornate corner decorations */}
+      {/* Texture, inner gilt rule and corner filigree */}
+      <div className="absolute inset-0 rounded-2xl bg-grain opacity-[0.12] pointer-events-none" />
+      <div className={`absolute inset-1.5 rounded-xl border border-current opacity-30 pointer-events-none transition-colors duration-300 ${cardStyle.trim}`} />
       {CORNER_POSITIONS.map(position => (
-        <div
+        <CornerFiligree
           key={position}
-          className={`absolute w-8 h-8 transition-colors duration-300 ${position} ${cardStyle.corner}`}
+          className={`absolute w-10 h-10 pointer-events-none transition-colors duration-300 ${position} ${cardStyle.trim}`}
         />
       ))}
 
@@ -240,7 +254,7 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
       {effect && (
         <div
           key={`number-${effect.id}`}
-          className={`absolute top-1/2 left-1/2 z-50 pointer-events-none animate-float-up whitespace-nowrap font-bold drop-shadow-[0_0_10px_currentColor] ${effectStyle.text}`}
+          className={`absolute top-1/2 left-1/2 z-50 pointer-events-none animate-float-up whitespace-nowrap font-bold lining-nums drop-shadow-[0_0_10px_currentColor] ${effectStyle.text}`}
         >
           {effect.label}
         </div>
@@ -255,137 +269,144 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
         className="hidden"
       />
 
-      {/* Photo Section */}
-      <div
-        ref={photoAreaRef}
-        className="relative h-48 bg-gradient-to-br from-slate-700 to-slate-800 group"
-        onClick={() => {
-          if (!isCameraOpen) setIsPhotoMenuOpen(open => !open)
-        }}
-        onPointerLeave={(e) => {
-          // Touch browsers fire compatibility mouse/pointer leaves right after a tap, so only a real mouse closes the menu here
-          if (e.pointerType === 'mouse') setIsPhotoMenuOpen(false)
-        }}
-      >
-        {isCameraOpen ? (
-          <div className="w-full h-full relative">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-              style={{ transform: 'scaleX(-1)' }}
-            />
-            {cameraError && (
-              <div className="absolute inset-0 flex items-center justify-center bg-slate-900/90 p-4">
-                <p className="text-red-400 text-sm text-center">{cameraError}</p>
+      <div className="relative px-5 pt-5 pb-5">
+        {/* Portrait Section - arched frame */}
+        <div
+          ref={photoAreaRef}
+          className="relative h-52 group"
+          onClick={() => {
+            if (!isCameraOpen) setIsPhotoMenuOpen(open => !open)
+          }}
+          onPointerLeave={(e) => {
+            // Touch browsers fire compatibility mouse/pointer leaves right after a tap, so only a real mouse closes the menu here
+            if (e.pointerType === 'mouse') setIsPhotoMenuOpen(false)
+          }}
+        >
+          <div className={`absolute inset-0 overflow-hidden rounded-t-[50%_32%] rounded-b-lg border-2 bg-gradient-to-b from-[#2d2238] to-[#120d18] shadow-[inset_0_0_30px_rgba(0,0,0,0.85)] transition-colors duration-300 ${cardStyle.portrait}`}>
+            {isCameraOpen ? (
+              <div className="w-full h-full relative">
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="w-full h-full object-cover"
+                  style={{ transform: 'scaleX(-1)' }}
+                />
+                {cameraError && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-[#120d18]/95 p-6 pt-10">
+                    <p className="text-red-300 text-base italic text-center">{cameraError}</p>
+                  </div>
+                )}
+                <div className="absolute bottom-0 left-0 right-0 flex gap-2 p-2 bg-gradient-to-t from-black/85 to-transparent">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      capturePhoto()
+                    }}
+                    disabled={Boolean(cameraError)}
+                    className="flex-1 font-heading uppercase tracking-wider text-xs bg-gradient-to-b from-amber-300 to-amber-600 hover:from-amber-200 hover:to-amber-500 text-amber-950 font-bold py-2 px-3 rounded-md border border-amber-200/60 transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                      <path fillRule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586a1 1 0 01-.707-.293l-1.121-1.121A2 2 0 0011.172 3H8.828a2 2 0 00-1.414.586L6.293 4.707A1 1 0 015.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                    </svg>
+                    Capture
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      stopCamera()
+                    }}
+                    className="font-heading uppercase tracking-wider text-xs bg-[#241a2e] hover:bg-[#33253f] text-amber-100 font-bold py-2 px-3 rounded-md border border-amber-500/30 transition-all"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : player.photo ? (
+              <img
+                src={player.photo}
+                alt={player.name}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center pt-6 text-amber-200/30 group-hover:text-amber-300/80 transition-colors pointer-events-none">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mb-2" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                  <path d="M12 2.5c-3 0-5 2.6-5 5.8 0 2.4 1.2 4.4 3 5.3-3.9.8-6.5 3.6-7 7.9h18c-.5-4.3-3.1-7.1-7-7.9 1.8-.9 3-2.9 3-5.3 0-3.2-2-5.8-5-5.8z" />
+                </svg>
+                <span className="font-heading text-xs uppercase tracking-[0.25em]">Add a portrait</span>
               </div>
             )}
-            <div className="absolute bottom-0 left-0 right-0 flex gap-2 p-2 bg-gradient-to-t from-black/80 to-transparent">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  capturePhoto()
-                }}
-                disabled={Boolean(cameraError)}
-                className="flex-1 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-amber-950 font-bold py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                  <path fillRule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586a1 1 0 01-.707-.293l-1.121-1.121A2 2 0 0011.172 3H8.828a2 2 0 00-1.414.586L6.293 4.707A1 1 0 015.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
-                </svg>
-                Capture
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation()
-                  stopCamera()
-                }}
-                className="bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold py-2 px-4 rounded-lg transition-all"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        ) : player.photo ? (
-          <img
-            src={player.photo}
-            alt={player.name}
-            className="w-full h-full object-cover"
-          />
-        ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 group-hover:text-amber-400 transition-colors pointer-events-none">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
-            </svg>
-            <span className="text-sm">Add portrait photo</span>
-          </div>
-        )}
 
-        {photoError && !isCameraOpen && (
-          <p className="absolute top-0 left-0 right-0 bg-red-950/90 text-red-300 text-xs text-center py-1.5 px-10 pointer-events-none">
-            {photoError}
-          </p>
-        )}
+            {tier === 'defeated' && !isCameraOpen && (
+              <div className="absolute inset-x-0 bottom-0 py-1.5 bg-gradient-to-t from-black/90 to-black/40 text-center font-heading text-sm font-bold uppercase tracking-[0.5em] text-stone-300 pointer-events-none">
+                Fallen
+              </div>
+            )}
 
-        {/* Photo options overlay */}
-        {!isCameraOpen && (
-          <div className={`absolute inset-0 bg-black/60 transition-opacity flex items-center justify-center gap-3 p-4 ${photoControlsVisibility}`}>
+            {photoError && !isCameraOpen && (
+              <p className="absolute top-10 inset-x-4 rounded bg-red-950/90 border border-red-800/60 text-red-200 text-sm italic text-center py-1.5 px-3 pointer-events-none">
+                {photoError}
+              </p>
+            )}
+
+            {/* Photo options overlay */}
+            {!isCameraOpen && (
+              <div className={`absolute inset-0 bg-black/65 transition-opacity flex flex-col items-center justify-center gap-2.5 p-4 pt-8 ${photoControlsVisibility}`}>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    startCamera()
+                  }}
+                  className="font-heading uppercase tracking-wider text-xs bg-gradient-to-b from-cyan-500 to-blue-800 hover:from-cyan-400 hover:to-blue-700 text-white font-bold py-2.5 w-36 rounded-md border border-cyan-300/50 transition-all flex items-center justify-center gap-2 shadow-lg"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586a1 1 0 01-.707-.293l-1.121-1.121A2 2 0 0011.172 3H8.828a2 2 0 00-1.414.586L6.293 4.707A1 1 0 015.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+                  </svg>
+                  Camera
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    fileInputRef.current?.click()
+                  }}
+                  className="font-heading uppercase tracking-wider text-xs bg-gradient-to-b from-amber-300 to-amber-600 hover:from-amber-200 hover:to-amber-500 text-amber-950 font-bold py-2.5 w-36 rounded-md border border-amber-200/60 transition-all flex items-center justify-center gap-2 shadow-lg"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                    <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Upload
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Remove Button - sits in the corner beside the arch; first press asks for confirmation */}
+          {!isCameraOpen && (
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                startCamera()
+                if (isConfirmingRemove) {
+                  onRemove()
+                } else {
+                  setIsConfirmingRemove(true)
+                }
               }}
-              className="bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 text-white font-bold py-2.5 px-4 rounded-lg transition-all flex items-center gap-2 shadow-lg"
+              aria-label={isConfirmingRemove ? `Confirm removing ${player.name}` : `Remove ${player.name}`}
+              className={`absolute top-0 right-0 bg-red-950/90 hover:bg-red-800 text-red-300 hover:text-white rounded-full transition-all border border-red-700/80 z-20 flex items-center gap-1 ${
+                isConfirmingRemove ? 'opacity-100 py-1 px-3 font-heading text-xs font-bold uppercase tracking-wider' : `p-1.5 ${photoControlsVisibility}`
+              }`}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path fillRule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586a1 1 0 01-.707-.293l-1.121-1.121A2 2 0 0011.172 3H8.828a2 2 0 00-1.414.586L6.293 4.707A1 1 0 015.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
               </svg>
-              Camera
+              {isConfirmingRemove && 'Remove?'}
             </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                fileInputRef.current?.click()
-              }}
-              className="bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-amber-950 font-bold py-2.5 px-4 rounded-lg transition-all flex items-center gap-2 shadow-lg"
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
-              </svg>
-              Upload
-            </button>
-          </div>
-        )}
+          )}
+        </div>
 
-        {/* Remove Button - first press asks for confirmation */}
-        {!isCameraOpen && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation()
-              if (isConfirmingRemove) {
-                onRemove()
-              } else {
-                setIsConfirmingRemove(true)
-              }
-            }}
-            aria-label={isConfirmingRemove ? `Confirm removing ${player.name}` : `Remove ${player.name}`}
-            className={`absolute top-2 right-2 bg-red-900/80 hover:bg-red-700 text-red-300 hover:text-white rounded-full transition-all border border-red-700 z-10 flex items-center gap-1 ${
-              isConfirmingRemove ? 'opacity-100 py-1 px-3 text-sm font-bold' : `p-1.5 ${photoControlsVisibility}`
-            }`}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
-              <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-            </svg>
-            {isConfirmingRemove && 'Remove?'}
-          </button>
-        )}
-      </div>
-
-      {/* Player Info */}
-      <div className="p-4">
         {/* Name Section */}
-        <div className="mb-4">
+        <div className="mt-4">
           {isEditingName ? (
             <input
               type="text"
@@ -396,25 +417,26 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
               maxLength={30}
               aria-label="Player name"
               autoFocus
-              className="w-full bg-slate-700 text-amber-100 text-xl font-bold px-3 py-2 rounded-lg border border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
+              className="w-full bg-[#120d18] text-amber-100 font-heading text-xl font-bold text-center tracking-wider px-3 py-1.5 rounded-md border border-amber-500/70 focus:outline-none focus:ring-2 focus:ring-amber-500/60"
             />
           ) : (
-            <h2 className="text-xl font-bold text-amber-100 tracking-wide">
+            <h2 className="font-heading text-xl font-bold text-amber-100 tracking-wider drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
               <button
                 onClick={startEditingName}
-                className="w-full text-left truncate cursor-pointer hover:text-amber-300 transition-colors"
+                className="w-full text-center truncate cursor-pointer hover:text-amber-300 transition-colors py-1.5"
                 title="Click to edit name"
               >
                 {player.name}
               </button>
             </h2>
           )}
+          <Divider className={`w-44 h-3 mx-auto mt-1 transition-colors duration-300 ${cardStyle.trim}`} />
         </div>
 
         {/* Health Section */}
-        <div className="mb-4">
-          <span className="text-amber-200/70 text-sm font-medium flex items-center justify-center gap-2 uppercase tracking-wider mb-3">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-500 animate-pulse" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+        <div className="mt-4">
+          <span className={`${SECTION_LABEL} justify-center mb-3`}>
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-red-500 animate-pulse" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
               <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
             </svg>
             Vitality
@@ -423,41 +445,50 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
             <button
               onClick={() => onAdjustHealth(1)}
               aria-label={`Heal ${player.name} by 1`}
-              className="w-32 bg-gradient-to-b from-emerald-600 to-emerald-800 hover:from-emerald-500 hover:to-emerald-700 text-emerald-100 font-bold py-2.5 px-3 rounded-lg transition-all border border-emerald-500/50 hover:border-emerald-400 shadow-lg hover:shadow-emerald-800/50 active:scale-95"
+              className={`${STEP_BUTTON} w-32 bg-gradient-to-b from-emerald-700 to-emerald-950 hover:from-emerald-600 hover:to-emerald-900 text-emerald-100 border-emerald-400/40 hover:border-emerald-300/70`}
             >
               <span className="drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]">+1</span>
             </button>
+            {/* Vitality gem in a gilded setting */}
             <div
               aria-label={`${player.name} vitality: ${player.health}`}
-              className={`relative bg-gradient-to-r ${healthStyle.color} text-white text-6xl font-black px-8 py-4 rounded-xl shadow-2xl ${healthStyle.glow} min-w-[8rem] text-center border-4 border-white/20`}
+              className={`relative w-32 h-32 rounded-full p-1 bg-gradient-to-b from-amber-200 via-amber-600 to-amber-900 transition-shadow duration-300 ${healthStyle.glow}`}
             >
-              <span className="drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)]">{player.health}</span>
-              <div className="absolute inset-0 bg-white/20 rounded-xl opacity-0 hover:opacity-100 transition-opacity" />
+              <div className={`relative w-full h-full rounded-full flex items-center justify-center bg-radial-[at_35%_28%] ${healthStyle.gem} shadow-[inset_0_-6px_14px_rgba(0,0,0,0.55),inset_0_4px_10px_rgba(255,255,255,0.2)]`}>
+                <div className="absolute inset-2 rounded-full border border-white/15" />
+                <div className="absolute top-3 left-7 w-9 h-4 rounded-full bg-white/25 blur-[3px] -rotate-[25deg]" />
+                <span className="relative font-body font-bold lining-nums text-6xl text-white drop-shadow-[0_3px_4px_rgba(0,0,0,0.85)]">{player.health}</span>
+              </div>
             </div>
             <button
               onClick={() => onAdjustHealth(-1)}
               aria-label={`Damage ${player.name} by 1`}
-              className="w-32 bg-gradient-to-b from-red-700 to-red-900 hover:from-red-600 hover:to-red-800 text-red-200 font-bold py-2.5 px-3 rounded-lg transition-all border border-red-600/50 hover:border-red-400 shadow-lg hover:shadow-red-800/50 active:scale-95"
+              className={`${STEP_BUTTON} w-32 bg-gradient-to-b from-red-800 to-red-950 hover:from-red-700 hover:to-red-900 text-red-100 border-red-500/40 hover:border-red-400/70`}
             >
               <span className="drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]">-1</span>
             </button>
           </div>
         </div>
 
+        <Divider className={`w-44 h-3 mx-auto my-4 transition-colors duration-300 ${cardStyle.trim}`} />
+
         {/* Shields Section */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <span className="text-amber-200/70 text-sm font-medium flex items-center gap-2 uppercase tracking-wider">
-              <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 text-cyan-400 ${player.shields > 0 ? 'animate-pulse' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+            <span className={SECTION_LABEL}>
+              <svg xmlns="http://www.w3.org/2000/svg" className={`h-4 w-4 text-cyan-400 ${player.shields > 0 ? 'animate-pulse' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path fillRule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2A11.954 11.954 0 0110 1.944z" clipRule="evenodd" />
               </svg>
               Arcane Shield
             </span>
             <div
               aria-label={`${player.name} shields: ${player.shields}`}
-              className={`relative bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-3xl font-bold px-4 py-1 rounded-lg min-w-[4rem] text-center ${player.shields > 0 ? 'shadow-lg shadow-cyan-500/50 animate-shield-glow' : 'opacity-50'}`}
+              className={`relative w-14 h-16 flex items-center justify-center ${player.shields > 0 ? 'animate-shield-glow' : ''}`}
             >
-              <span className="drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">{player.shields}</span>
+              <ShieldEmblem active={player.shields > 0} className="absolute inset-0 w-full h-full" />
+              <span className={`relative -mt-1.5 font-body font-bold lining-nums text-3xl drop-shadow-[0_2px_2px_rgba(0,0,0,0.7)] ${player.shields > 0 ? 'text-white' : 'text-stone-400'}`}>
+                {player.shields}
+              </span>
             </div>
           </div>
           <div className="flex gap-2">
@@ -465,28 +496,28 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
               onClick={() => onAdjustShields(-1)}
               disabled={player.shields === 0}
               aria-label={`Remove 1 shield from ${player.name}`}
-              className="flex-1 bg-gradient-to-b from-slate-600 to-slate-800 hover:from-slate-500 hover:to-slate-700 text-slate-300 font-bold py-2.5 px-3 rounded-lg transition-all border border-slate-500/50 hover:border-slate-400 shadow-lg active:scale-95 disabled:opacity-40 disabled:pointer-events-none"
+              className={`${STEP_BUTTON} flex-1 bg-gradient-to-b from-[#3a3042] to-[#1c1622] hover:from-[#4a3d54] text-stone-300 border-stone-500/40 hover:border-stone-400/70 disabled:opacity-40 disabled:pointer-events-none`}
             >
               -1
             </button>
             <button
               onClick={() => onAdjustShields(1)}
               aria-label={`Add 1 shield to ${player.name}`}
-              className="flex-1 bg-gradient-to-b from-cyan-600 to-blue-800 hover:from-cyan-500 hover:to-blue-700 text-cyan-100 font-bold py-2.5 px-3 rounded-lg transition-all border border-cyan-500/50 hover:border-cyan-400 shadow-lg hover:shadow-cyan-800/50 active:scale-95"
+              className={`${STEP_BUTTON} flex-1 bg-gradient-to-b from-cyan-700 to-blue-950 hover:from-cyan-600 hover:to-blue-900 text-cyan-100 border-cyan-400/40 hover:border-cyan-300/70`}
             >
               <span className="drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]">+1</span>
             </button>
             <button
               onClick={() => onAdjustShields(3)}
               aria-label={`Add 3 shields to ${player.name}`}
-              className="flex-1 bg-gradient-to-b from-cyan-500 to-blue-700 hover:from-cyan-400 hover:to-blue-600 text-cyan-100 font-bold py-2.5 px-3 rounded-lg transition-all border border-cyan-400/50 hover:border-cyan-300 shadow-lg hover:shadow-cyan-700/50 active:scale-95"
+              className={`${STEP_BUTTON} flex-1 bg-gradient-to-b from-cyan-600 to-blue-900 hover:from-cyan-500 hover:to-blue-800 text-cyan-50 border-cyan-300/50 hover:border-cyan-200/80`}
             >
               <span className="drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]">+3</span>
             </button>
           </div>
           {player.shields > 0 && (
-            <p className="text-xs text-cyan-400/60 mt-2 text-center italic">
-              Magical barrier absorbs damage
+            <p className="text-base text-cyan-300/70 mt-2 text-center italic">
+              A magical barrier absorbs damage
             </p>
           )}
         </div>
@@ -494,7 +525,7 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
 
       {/* Screen flash overlay */}
       {effect && (
-        <div key={`flash-${effect.id}`} className={`absolute inset-0 pointer-events-none animate-flash ${effectStyle.flash}`} />
+        <div key={`flash-${effect.id}`} className={`absolute inset-0 rounded-2xl pointer-events-none animate-flash ${effectStyle.flash}`} />
       )}
     </div>
   )
