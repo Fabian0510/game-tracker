@@ -1,71 +1,121 @@
-import { useRef, useState, useEffect, useCallback } from 'react'
+import { useRef, useState, useEffect } from 'react'
+import { describeChange, getHealthTier } from '../gameLogic'
+import { fileToPortraitDataUrl, toPortraitDataUrl } from '../imageUtils'
+
+const HEALTH_STYLES = {
+  defeated: { color: 'from-gray-600 to-gray-800', glow: 'shadow-gray-900/50' },
+  critical: { color: 'from-red-500 to-red-700', glow: 'shadow-red-500/50' },
+  warning: { color: 'from-amber-500 to-orange-600', glow: 'shadow-amber-500/50' },
+  healthy: { color: 'from-emerald-400 to-green-600', glow: 'shadow-emerald-500/50' },
+}
+
+const EFFECT_STYLES = {
+  damage: { card: 'animate-damage', flash: 'bg-red-500/30', text: 'text-red-500 text-5xl', duration: 600 },
+  heal: { card: 'animate-heal', flash: 'bg-emerald-500/20', text: 'text-emerald-400 text-5xl', duration: 600 },
+  'shield-break': { card: 'animate-shield-break', flash: 'bg-cyan-500/30', text: 'text-blue-400 text-5xl', duration: 600 },
+  death: { card: 'animate-death', flash: 'bg-gray-900/60', text: 'text-gray-400 text-4xl', duration: 1000 },
+}
+
+const CARD_STYLES = {
+  defeated: {
+    card: 'bg-gradient-to-b from-gray-700 via-gray-800 to-gray-900 border-gray-600/50 opacity-70 grayscale',
+    corner: 'border-gray-600/40',
+  },
+  shielded: {
+    card: 'bg-gradient-to-b from-slate-800 to-slate-900 border-cyan-400/60 shadow-[0_0_30px_rgba(34,211,238,0.6)] hover:shadow-[0_0_40px_rgba(34,211,238,0.8)]',
+    corner: 'border-cyan-400/60',
+  },
+  normal: {
+    card: 'bg-gradient-to-b from-slate-800 to-slate-900 border-amber-900/30 hover:border-amber-500/50',
+    corner: 'border-amber-500/40',
+  },
+}
+
+const CORNER_POSITIONS = [
+  'top-0 left-0 border-t-2 border-l-2 rounded-tl-2xl',
+  'top-0 right-0 border-t-2 border-r-2 rounded-tr-2xl',
+  'bottom-0 left-0 border-b-2 border-l-2 rounded-bl-2xl',
+  'bottom-0 right-0 border-b-2 border-r-2 rounded-br-2xl',
+]
+
+// Photo controls show on mouse hover, keyboard focus, or when toggled open by a tap (touch devices have no hover)
+const HIDDEN_PHOTO_CONTROLS = 'opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto group-has-focus-visible:opacity-100 group-has-focus-visible:pointer-events-auto'
+
+function describeCameraError(err) {
+  switch (err?.name) {
+    case 'NotAllowedError':
+      return 'Camera permission was denied. Allow camera access in your browser settings, or use Upload instead.'
+    case 'NotFoundError':
+    case 'OverconstrainedError':
+      return 'No camera was found on this device. Use Upload instead.'
+    case 'NotReadableError':
+      return 'The camera is in use by another app.'
+    default:
+      return 'Could not access camera. Please ensure camera permissions are granted.'
+  }
+}
 
 function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShields }) {
   const [isEditingName, setIsEditingName] = useState(false)
   const [nameInput, setNameInput] = useState(player.name)
-  const [healthAnimation, setHealthAnimation] = useState(null)
-  const [floatingNumber, setFloatingNumber] = useState(null)
+  const [effect, setEffect] = useState(null)
+  const [prevStats, setPrevStats] = useState({ health: player.health, shields: player.shields })
   const [isCameraOpen, setIsCameraOpen] = useState(false)
   const [cameraError, setCameraError] = useState(null)
+  const [photoError, setPhotoError] = useState(null)
+  const [isPhotoMenuOpen, setIsPhotoMenuOpen] = useState(false)
+  const [isConfirmingRemove, setIsConfirmingRemove] = useState(false)
+  const cardRef = useRef(null)
   const videoRef = useRef(null)
-  const canvasRef = useRef(null)
   const streamRef = useRef(null)
   const fileInputRef = useRef(null)
-  const prevHealthRef = useRef(player.health)
-  const prevShieldsRef = useRef(player.shields)
+  const photoAreaRef = useRef(null)
+  const cancelNameEditRef = useRef(false)
 
-  useEffect(() => {
-    const healthDiff = player.health - prevHealthRef.current
-    const shieldsDiff = player.shields - prevShieldsRef.current
-
-    if (healthDiff !== 0 || (shieldsDiff < 0 && prevShieldsRef.current > 0)) {
-      // Clear animation first to force restart
-      setHealthAnimation(null)
-      setFloatingNumber(null)
-
-      // Use requestAnimationFrame to set new animation in next frame
-      requestAnimationFrame(() => {
-        // Check if player just died
-        if (player.health <= 0 && prevHealthRef.current > 0) {
-          setHealthAnimation('death')
-          setFloatingNumber({ value: 'DEFEATED', type: 'death' })
-        } else if (healthDiff < 0) {
-          setHealthAnimation('damage')
-          setFloatingNumber({ value: healthDiff, type: 'damage' })
-        } else if (healthDiff > 0) {
-          setHealthAnimation('heal')
-          setFloatingNumber({ value: `+${healthDiff}`, type: 'heal' })
-        } else if (shieldsDiff < 0 && prevShieldsRef.current > 0) {
-          setHealthAnimation('shield-break')
-          setFloatingNumber({ value: shieldsDiff, type: 'shield' })
-        }
-      })
+  // Pick the effect to play whenever health/shields change (adjusting state during render, not in an effect)
+  if (player.health !== prevStats.health || player.shields !== prevStats.shields) {
+    const change = describeChange(prevStats, player)
+    setPrevStats({ health: player.health, shields: player.shields })
+    if (change) {
+      setEffect({ ...change, id: (effect?.id ?? 0) + 1 })
     }
+  }
 
-    prevHealthRef.current = player.health
-    prevShieldsRef.current = player.shields
-  }, [player.health, player.shields])
-
-  // Separate effect to clear animations after they complete
+  // Restart the card animation (so repeated hits shake again) and clear the effect once it finishes
   useEffect(() => {
-    if (healthAnimation) {
-      const duration = healthAnimation === 'death' ? 1000 : 600
-      const timer = setTimeout(() => {
-        setHealthAnimation(null)
-        setFloatingNumber(null)
-      }, duration)
-      return () => clearTimeout(timer)
+    if (!effect) return
+
+    cardRef.current?.getAnimations?.().forEach(animation => {
+      if (animation.animationName) {
+        animation.cancel()
+        animation.play()
+      }
+    })
+
+    const timer = setTimeout(() => setEffect(null), EFFECT_STYLES[effect.type].duration)
+    return () => clearTimeout(timer)
+  }, [effect])
+
+  useEffect(() => {
+    if (!isConfirmingRemove) return
+    const timer = setTimeout(() => setIsConfirmingRemove(false), 3000)
+    return () => clearTimeout(timer)
+  }, [isConfirmingRemove])
+
+  // Close the photo menu when tapping/clicking anywhere outside the portrait
+  useEffect(() => {
+    if (!isPhotoMenuOpen) return
+
+    const handlePointerDown = (e) => {
+      if (!photoAreaRef.current?.contains(e.target)) setIsPhotoMenuOpen(false)
     }
-  }, [healthAnimation])
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => document.removeEventListener('pointerdown', handlePointerDown)
+  }, [isPhotoMenuOpen])
 
-  const startCamera = useCallback(async () => {
-    setCameraError(null)
-    setIsCameraOpen(true)
-  }, [])
-
-  // Set up video stream when camera opens
+  // Camera stream lives exactly as long as the camera view is open (and the card is mounted)
   useEffect(() => {
-    if (!isCameraOpen) return
+    if (!isCameraOpen || !navigator.mediaDevices?.getUserMedia) return
 
     let cancelled = false
 
@@ -86,7 +136,7 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
       } catch (err) {
         console.error('Camera error:', err)
         if (!cancelled) {
-          setCameraError('Could not access camera. Please ensure camera permissions are granted.')
+          setCameraError(describeCameraError(err))
         }
       }
     }
@@ -95,133 +145,106 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
 
     return () => {
       cancelled = true
+      streamRef.current?.getTracks().forEach(track => track.stop())
+      streamRef.current = null
     }
   }, [isCameraOpen])
 
-  const stopCamera = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(track => track.stop())
-      streamRef.current = null
-    }
+  const startCamera = () => {
+    setIsPhotoMenuOpen(false)
+    setPhotoError(null)
+    setCameraError(
+      navigator.mediaDevices?.getUserMedia
+        ? null
+        : 'Camera access requires HTTPS (or localhost). Use Upload instead.'
+    )
+    setIsCameraOpen(true)
+  }
+
+  const stopCamera = () => {
     setIsCameraOpen(false)
     setCameraError(null)
-  }, [])
+  }
 
-  const capturePhoto = useCallback(() => {
-    if (videoRef.current && canvasRef.current) {
-      const video = videoRef.current
-      const canvas = canvasRef.current
-
-      // Ensure video has dimensions
-      if (video.videoWidth === 0 || video.videoHeight === 0) {
-        console.error('Video not ready yet')
-        return
-      }
-
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
-      const ctx = canvas.getContext('2d')
-
-      // Mirror the image horizontally to match the preview
-      ctx.translate(canvas.width, 0)
-      ctx.scale(-1, 1)
-      ctx.drawImage(video, 0, 0)
-
-      const photoData = canvas.toDataURL('image/jpeg', 0.8)
-      onUpdate({ photo: photoData })
-      stopCamera()
+  const capturePhoto = () => {
+    const video = videoRef.current
+    if (!video || video.videoWidth === 0 || video.videoHeight === 0) {
+      console.error('Video not ready yet')
+      return
     }
-  }, [onUpdate, stopCamera])
 
-  useEffect(() => {
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop())
-      }
-    }
-  }, [])
+    onUpdate({ photo: toPortraitDataUrl(video, video.videoWidth, video.videoHeight, { mirror: true }) })
+    stopCamera()
+  }
 
-  const handleFileUpload = (e) => {
-    const file = e.target.files[0]
-    if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        onUpdate({ photo: reader.result })
-      }
-      reader.readAsDataURL(file)
+  const handleFileUpload = async (e) => {
+    const file = e.target.files?.[0]
+    // Reset so choosing the same file again still triggers a change
+    e.target.value = ''
+    if (!file) return
+
+    setIsPhotoMenuOpen(false)
+    try {
+      onUpdate({ photo: await fileToPortraitDataUrl(file) })
+      setPhotoError(null)
+    } catch (err) {
+      console.error('Could not load image:', err)
+      setPhotoError('That file could not be read as an image.')
     }
   }
 
-  const handleNameSubmit = () => {
-    onUpdate({ name: nameInput || 'Player' })
+  const startEditingName = () => {
+    setNameInput(player.name)
+    setIsEditingName(true)
+  }
+
+  const finishEditingName = () => {
+    const name = nameInput.trim()
+    if (!cancelNameEditRef.current && name) {
+      onUpdate({ name })
+    }
+    cancelNameEditRef.current = false
     setIsEditingName(false)
   }
 
   const handleNameKeyDown = (e) => {
+    // Blur before unmounting the input, so the edit is committed (or cancelled) exactly once
     if (e.key === 'Enter') {
-      handleNameSubmit()
+      e.currentTarget.blur()
     } else if (e.key === 'Escape') {
-      setNameInput(player.name)
-      setIsEditingName(false)
+      cancelNameEditRef.current = true
+      e.currentTarget.blur()
     }
   }
 
-  const getHealthColor = () => {
-    if (player.health <= 0) return 'from-gray-600 to-gray-800'
-    if (player.health <= 3) return 'from-red-500 to-red-700'
-    if (player.health <= 6) return 'from-amber-500 to-orange-600'
-    return 'from-emerald-400 to-green-600'
-  }
-
-  const getHealthGlow = () => {
-    if (player.health <= 0) return 'shadow-gray-900/50'
-    if (player.health <= 3) return 'shadow-red-500/50'
-    if (player.health <= 6) return 'shadow-amber-500/50'
-    return 'shadow-emerald-500/50'
-  }
-
-  const getAnimationClass = () => {
-    if (healthAnimation === 'damage') return 'animate-damage'
-    if (healthAnimation === 'heal') return 'animate-heal'
-    if (healthAnimation === 'shield-break') return 'animate-shield-break'
-    if (healthAnimation === 'death') return 'animate-death'
-    return ''
-  }
+  const tier = getHealthTier(player.health)
+  const healthStyle = HEALTH_STYLES[tier]
+  const cardStyle = CARD_STYLES[tier === 'defeated' ? 'defeated' : player.shields > 0 ? 'shielded' : 'normal']
+  const effectStyle = effect && EFFECT_STYLES[effect.type]
+  const photoControlsVisibility = isPhotoMenuOpen ? 'opacity-100' : HIDDEN_PHOTO_CONTROLS
 
   return (
-    <div className={`relative rounded-2xl shadow-2xl overflow-hidden border-2 transition-all duration-300 ${getAnimationClass()} ${
-      player.health <= 0
-        ? 'bg-gradient-to-b from-gray-700 via-gray-800 to-gray-900 border-gray-600/50 opacity-70 grayscale'
-        : player.shields > 0
-        ? 'bg-gradient-to-b from-slate-800 via-slate-850 to-slate-900 border-cyan-400/60 shadow-[0_0_30px_rgba(34,211,238,0.6)] hover:shadow-[0_0_40px_rgba(34,211,238,0.8)]'
-        : 'bg-gradient-to-b from-slate-800 via-slate-850 to-slate-900 border-amber-900/30 hover:border-amber-500/50'
-    }`}>
+    <div
+      ref={cardRef}
+      className={`relative rounded-2xl shadow-2xl overflow-hidden border-2 transition-all duration-300 ${effectStyle?.card ?? ''} ${cardStyle.card}`}
+    >
       {/* Ornate corner decorations */}
-      <div className={`absolute top-0 left-0 w-8 h-8 border-t-2 border-l-2 rounded-tl-2xl transition-colors duration-300 ${
-        player.health <= 0 ? 'border-gray-600/40' : player.shields > 0 ? 'border-cyan-400/60' : 'border-amber-500/40'
-      }`} />
-      <div className={`absolute top-0 right-0 w-8 h-8 border-t-2 border-r-2 rounded-tr-2xl transition-colors duration-300 ${
-        player.health <= 0 ? 'border-gray-600/40' : player.shields > 0 ? 'border-cyan-400/60' : 'border-amber-500/40'
-      }`} />
-      <div className={`absolute bottom-0 left-0 w-8 h-8 border-b-2 border-l-2 rounded-bl-2xl transition-colors duration-300 ${
-        player.health <= 0 ? 'border-gray-600/40' : player.shields > 0 ? 'border-cyan-400/60' : 'border-amber-500/40'
-      }`} />
-      <div className={`absolute bottom-0 right-0 w-8 h-8 border-b-2 border-r-2 rounded-br-2xl transition-colors duration-300 ${
-        player.health <= 0 ? 'border-gray-600/40' : player.shields > 0 ? 'border-cyan-400/60' : 'border-amber-500/40'
-      }`} />
+      {CORNER_POSITIONS.map(position => (
+        <div
+          key={position}
+          className={`absolute w-8 h-8 transition-colors duration-300 ${position} ${cardStyle.corner}`}
+        />
+      ))}
 
-      {/* Floating damage/heal number */}
-      {floatingNumber && (
-        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none animate-float-up
-          ${floatingNumber.type === 'damage' ? 'text-red-500' : floatingNumber.type === 'heal' ? 'text-emerald-400' : floatingNumber.type === 'death' ? 'text-gray-400 text-4xl' : 'text-blue-400'}
-          text-5xl font-bold drop-shadow-[0_0_10px_currentColor]`}
+      {/* Floating damage/heal number - keyed so each new hit restarts the animation; centring comes from the float-up keyframes */}
+      {effect && (
+        <div
+          key={`number-${effect.id}`}
+          className={`absolute top-1/2 left-1/2 z-50 pointer-events-none animate-float-up whitespace-nowrap font-bold drop-shadow-[0_0_10px_currentColor] ${effectStyle.text}`}
         >
-          {floatingNumber.value}
+          {effect.label}
         </div>
       )}
-
-      {/* Hidden canvas for photo capture */}
-      <canvas ref={canvasRef} className="hidden" />
 
       {/* Hidden file input */}
       <input
@@ -233,7 +256,17 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
       />
 
       {/* Photo Section */}
-      <div className="relative h-48 bg-gradient-to-br from-slate-700 to-slate-800 group">
+      <div
+        ref={photoAreaRef}
+        className="relative h-48 bg-gradient-to-br from-slate-700 to-slate-800 group"
+        onClick={() => {
+          if (!isCameraOpen) setIsPhotoMenuOpen(open => !open)
+        }}
+        onPointerLeave={(e) => {
+          // Touch browsers fire compatibility mouse/pointer leaves right after a tap, so only a real mouse closes the menu here
+          if (e.pointerType === 'mouse') setIsPhotoMenuOpen(false)
+        }}
+      >
         {isCameraOpen ? (
           <div className="w-full h-full relative">
             <video
@@ -241,7 +274,7 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
               autoPlay
               playsInline
               muted
-              className="w-full h-full object-cover mirror"
+              className="w-full h-full object-cover"
               style={{ transform: 'scaleX(-1)' }}
             />
             {cameraError && (
@@ -255,9 +288,10 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
                   e.stopPropagation()
                   capturePhoto()
                 }}
-                className="flex-1 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-amber-950 font-bold py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2"
+                disabled={Boolean(cameraError)}
+                className="flex-1 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-400 hover:to-yellow-400 text-amber-950 font-bold py-2 px-4 rounded-lg transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                   <path fillRule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586a1 1 0 01-.707-.293l-1.121-1.121A2 2 0 0011.172 3H8.828a2 2 0 00-1.414.586L6.293 4.707A1 1 0 015.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
                 </svg>
                 Capture
@@ -281,16 +315,22 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
           />
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center text-slate-500 group-hover:text-amber-400 transition-colors pointer-events-none">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             <span className="text-sm">Add portrait photo</span>
           </div>
         )}
 
+        {photoError && !isCameraOpen && (
+          <p className="absolute top-0 left-0 right-0 bg-red-950/90 text-red-300 text-xs text-center py-1.5 px-10 pointer-events-none">
+            {photoError}
+          </p>
+        )}
+
         {/* Photo options overlay */}
         {!isCameraOpen && (
-          <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3 p-4">
+          <div className={`absolute inset-0 bg-black/60 transition-opacity flex items-center justify-center gap-3 p-4 ${photoControlsVisibility}`}>
             <button
               onClick={(e) => {
                 e.stopPropagation()
@@ -298,7 +338,7 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
               }}
               className="bg-gradient-to-r from-cyan-600 to-blue-700 hover:from-cyan-500 hover:to-blue-600 text-white font-bold py-2.5 px-4 rounded-lg transition-all flex items-center gap-2 shadow-lg"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path fillRule="evenodd" d="M4 5a2 2 0 00-2 2v8a2 2 0 002 2h12a2 2 0 002-2V7a2 2 0 00-2-2h-1.586a1 1 0 01-.707-.293l-1.121-1.121A2 2 0 0011.172 3H8.828a2 2 0 00-1.414.586L6.293 4.707A1 1 0 015.586 5H4zm6 9a3 3 0 100-6 3 3 0 000 6z" clipRule="evenodd" />
               </svg>
               Camera
@@ -310,7 +350,7 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
               }}
               className="bg-gradient-to-r from-amber-600 to-yellow-600 hover:from-amber-500 hover:to-yellow-500 text-amber-950 font-bold py-2.5 px-4 rounded-lg transition-all flex items-center gap-2 shadow-lg"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
               </svg>
               Upload
@@ -318,18 +358,26 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
           </div>
         )}
 
-        {/* Remove Button */}
+        {/* Remove Button - first press asks for confirmation */}
         {!isCameraOpen && (
           <button
             onClick={(e) => {
               e.stopPropagation()
-              onRemove()
+              if (isConfirmingRemove) {
+                onRemove()
+              } else {
+                setIsConfirmingRemove(true)
+              }
             }}
-            className="absolute top-2 right-2 bg-red-900/80 hover:bg-red-700 text-red-300 hover:text-white p-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-all border border-red-700 z-10"
+            aria-label={isConfirmingRemove ? `Confirm removing ${player.name}` : `Remove ${player.name}`}
+            className={`absolute top-2 right-2 bg-red-900/80 hover:bg-red-700 text-red-300 hover:text-white rounded-full transition-all border border-red-700 z-10 flex items-center gap-1 ${
+              isConfirmingRemove ? 'opacity-100 py-1 px-3 text-sm font-bold' : `p-1.5 ${photoControlsVisibility}`
+            }`}
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
               <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
             </svg>
+            {isConfirmingRemove && 'Remove?'}
           </button>
         )}
       </div>
@@ -343,18 +391,22 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
               type="text"
               value={nameInput}
               onChange={(e) => setNameInput(e.target.value)}
-              onBlur={handleNameSubmit}
+              onBlur={finishEditingName}
               onKeyDown={handleNameKeyDown}
+              maxLength={30}
+              aria-label="Player name"
               autoFocus
               className="w-full bg-slate-700 text-amber-100 text-xl font-bold px-3 py-2 rounded-lg border border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-500"
             />
           ) : (
-            <h2
-              onClick={() => setIsEditingName(true)}
-              className="text-xl font-bold text-amber-100 cursor-pointer hover:text-amber-300 transition-colors truncate tracking-wide"
-              title="Click to edit name"
-            >
-              {player.name}
+            <h2 className="text-xl font-bold text-amber-100 tracking-wide">
+              <button
+                onClick={startEditingName}
+                className="w-full text-left truncate cursor-pointer hover:text-amber-300 transition-colors"
+                title="Click to edit name"
+              >
+                {player.name}
+              </button>
             </h2>
           )}
         </div>
@@ -362,7 +414,7 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
         {/* Health Section */}
         <div className="mb-4">
           <span className="text-amber-200/70 text-sm font-medium flex items-center justify-center gap-2 uppercase tracking-wider mb-3">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-500 animate-pulse" viewBox="0 0 20 20" fill="currentColor">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-500 animate-pulse" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
               <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
             </svg>
             Vitality
@@ -370,16 +422,21 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
           <div className="flex flex-col items-center gap-3">
             <button
               onClick={() => onAdjustHealth(1)}
+              aria-label={`Heal ${player.name} by 1`}
               className="w-32 bg-gradient-to-b from-emerald-600 to-emerald-800 hover:from-emerald-500 hover:to-emerald-700 text-emerald-100 font-bold py-2.5 px-3 rounded-lg transition-all border border-emerald-500/50 hover:border-emerald-400 shadow-lg hover:shadow-emerald-800/50 active:scale-95"
             >
               <span className="drop-shadow-[0_0_8px_rgba(52,211,153,0.5)]">+1</span>
             </button>
-            <div className={`relative bg-gradient-to-r ${getHealthColor()} text-white text-6xl font-black px-8 py-4 rounded-xl shadow-2xl ${getHealthGlow()} min-w-[8rem] text-center border-4 border-white/20`}>
+            <div
+              aria-label={`${player.name} vitality: ${player.health}`}
+              className={`relative bg-gradient-to-r ${healthStyle.color} text-white text-6xl font-black px-8 py-4 rounded-xl shadow-2xl ${healthStyle.glow} min-w-[8rem] text-center border-4 border-white/20`}
+            >
               <span className="drop-shadow-[0_4px_8px_rgba(0,0,0,0.8)]">{player.health}</span>
               <div className="absolute inset-0 bg-white/20 rounded-xl opacity-0 hover:opacity-100 transition-opacity" />
             </div>
             <button
               onClick={() => onAdjustHealth(-1)}
+              aria-label={`Damage ${player.name} by 1`}
               className="w-32 bg-gradient-to-b from-red-700 to-red-900 hover:from-red-600 hover:to-red-800 text-red-200 font-bold py-2.5 px-3 rounded-lg transition-all border border-red-600/50 hover:border-red-400 shadow-lg hover:shadow-red-800/50 active:scale-95"
             >
               <span className="drop-shadow-[0_0_8px_rgba(239,68,68,0.5)]">-1</span>
@@ -391,30 +448,37 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
         <div>
           <div className="flex items-center justify-between mb-3">
             <span className="text-amber-200/70 text-sm font-medium flex items-center gap-2 uppercase tracking-wider">
-              <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 text-cyan-400 ${player.shields > 0 ? 'animate-pulse' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className={`h-5 w-5 text-cyan-400 ${player.shields > 0 ? 'animate-pulse' : ''}`} viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                 <path fillRule="evenodd" d="M10 1.944A11.954 11.954 0 012.166 5C2.056 5.649 2 6.319 2 7c0 5.225 3.34 9.67 8 11.317C14.66 16.67 18 12.225 18 7c0-.682-.057-1.35-.166-2A11.954 11.954 0 0110 1.944z" clipRule="evenodd" />
               </svg>
               Arcane Shield
             </span>
-            <div className={`relative bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-3xl font-bold px-4 py-1 rounded-lg min-w-[4rem] text-center ${player.shields > 0 ? 'shadow-lg shadow-cyan-500/50 animate-shield-glow' : 'opacity-50'}`}>
+            <div
+              aria-label={`${player.name} shields: ${player.shields}`}
+              className={`relative bg-gradient-to-r from-cyan-500 to-blue-600 text-white text-3xl font-bold px-4 py-1 rounded-lg min-w-[4rem] text-center ${player.shields > 0 ? 'shadow-lg shadow-cyan-500/50 animate-shield-glow' : 'opacity-50'}`}
+            >
               <span className="drop-shadow-[0_2px_2px_rgba(0,0,0,0.5)]">{player.shields}</span>
             </div>
           </div>
           <div className="flex gap-2">
             <button
               onClick={() => onAdjustShields(-1)}
-              className="flex-1 bg-gradient-to-b from-slate-600 to-slate-800 hover:from-slate-500 hover:to-slate-700 text-slate-300 font-bold py-2.5 px-3 rounded-lg transition-all border border-slate-500/50 hover:border-slate-400 shadow-lg active:scale-95"
+              disabled={player.shields === 0}
+              aria-label={`Remove 1 shield from ${player.name}`}
+              className="flex-1 bg-gradient-to-b from-slate-600 to-slate-800 hover:from-slate-500 hover:to-slate-700 text-slate-300 font-bold py-2.5 px-3 rounded-lg transition-all border border-slate-500/50 hover:border-slate-400 shadow-lg active:scale-95 disabled:opacity-40 disabled:pointer-events-none"
             >
               -1
             </button>
             <button
               onClick={() => onAdjustShields(1)}
+              aria-label={`Add 1 shield to ${player.name}`}
               className="flex-1 bg-gradient-to-b from-cyan-600 to-blue-800 hover:from-cyan-500 hover:to-blue-700 text-cyan-100 font-bold py-2.5 px-3 rounded-lg transition-all border border-cyan-500/50 hover:border-cyan-400 shadow-lg hover:shadow-cyan-800/50 active:scale-95"
             >
               <span className="drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]">+1</span>
             </button>
             <button
               onClick={() => onAdjustShields(3)}
+              aria-label={`Add 3 shields to ${player.name}`}
               className="flex-1 bg-gradient-to-b from-cyan-500 to-blue-700 hover:from-cyan-400 hover:to-blue-600 text-cyan-100 font-bold py-2.5 px-3 rounded-lg transition-all border border-cyan-400/50 hover:border-cyan-300 shadow-lg hover:shadow-cyan-700/50 active:scale-95"
             >
               <span className="drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]">+3</span>
@@ -428,18 +492,9 @@ function PlayerCard({ player, onRemove, onUpdate, onAdjustHealth, onAdjustShield
         </div>
       </div>
 
-      {/* Damage overlay flash */}
-      {healthAnimation === 'damage' && (
-        <div className="absolute inset-0 bg-red-500/30 pointer-events-none animate-flash" />
-      )}
-      {healthAnimation === 'heal' && (
-        <div className="absolute inset-0 bg-emerald-500/20 pointer-events-none animate-flash" />
-      )}
-      {healthAnimation === 'shield-break' && (
-        <div className="absolute inset-0 bg-cyan-500/30 pointer-events-none animate-flash" />
-      )}
-      {healthAnimation === 'death' && (
-        <div className="absolute inset-0 bg-gray-900/60 pointer-events-none animate-flash" />
+      {/* Screen flash overlay */}
+      {effect && (
+        <div key={`flash-${effect.id}`} className={`absolute inset-0 pointer-events-none animate-flash ${effectStyle.flash}`} />
       )}
     </div>
   )

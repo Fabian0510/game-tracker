@@ -1,64 +1,45 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import PlayerCard from './components/PlayerCard'
+import {
+  applyHealthChange,
+  applyShieldChange,
+  createPlayer,
+  nextPlayerId,
+  resetPlayer,
+} from './gameLogic'
+import { loadPlayers, savePlayers } from './storage'
 
 function App() {
-  const [players, setPlayers] = useState([
-    { id: 1, name: 'Player 1', health: 10, shields: 0, photo: null }
-  ])
+  const [players, setPlayers] = useState(() => loadPlayers() ?? [createPlayer(1)])
+
+  useEffect(() => {
+    savePlayers(players)
+  }, [players])
 
   const addPlayer = () => {
-    const newId = Math.max(0, ...players.map(p => p.id)) + 1
-    setPlayers([...players, {
-      id: newId,
-      name: `Player ${newId}`,
-      health: 10,
-      shields: 0,
-      photo: null
-    }])
+    setPlayers(prev => [...prev, createPlayer(nextPlayerId(prev))])
   }
 
   const removePlayer = (id) => {
-    setPlayers(players.filter(p => p.id !== id))
+    setPlayers(prev => prev.filter(p => p.id !== id))
   }
 
   const updatePlayer = (id, updates) => {
-    setPlayers(players.map(p =>
-      p.id === id ? { ...p, ...updates } : p
-    ))
+    setPlayers(prev => prev.map(p => (p.id === id ? { ...p, ...updates } : p)))
   }
 
   const adjustHealth = (id, amount) => {
-    setPlayers(players.map(p => {
-      if (p.id !== id) return p
-
-      if (amount < 0) {
-        // Taking damage - shields absorb first
-        let damage = Math.abs(amount)
-        let newShields = p.shields
-        let newHealth = p.health
-
-        if (newShields > 0) {
-          const shieldDamage = Math.min(newShields, damage)
-          newShields -= shieldDamage
-          damage -= shieldDamage
-        }
-
-        newHealth -= damage
-
-        return { ...p, health: newHealth, shields: newShields }
-      } else {
-        // Healing
-        return { ...p, health: p.health + amount }
-      }
-    }))
+    setPlayers(prev => prev.map(p => (p.id === id ? applyHealthChange(p, amount) : p)))
   }
 
   const adjustShields = (id, amount) => {
-    setPlayers(players.map(p => {
-      if (p.id !== id) return p
-      const newShields = Math.max(0, p.shields + amount)
-      return { ...p, shields: newShields }
-    }))
+    setPlayers(prev => prev.map(p => (p.id === id ? applyShieldChange(p, amount) : p)))
+  }
+
+  const startNewGame = () => {
+    if (window.confirm('Start a new game? Every hero is restored to full vitality and loses their shields.')) {
+      setPlayers(prev => prev.map(resetPlayer))
+    }
   }
 
   return (
@@ -78,16 +59,27 @@ function App() {
           <p className="text-purple-300/80 text-lg italic">Chronicle the vitality of heroes and villains</p>
         </header>
 
-        <div className="flex justify-center mb-10">
+        <div className="flex flex-wrap justify-center gap-3 mb-10">
           <button
             onClick={addPlayer}
             className="bg-gradient-to-r from-amber-600 via-yellow-500 to-amber-600 hover:from-amber-500 hover:via-yellow-400 hover:to-amber-500 text-amber-950 font-bold py-3 px-8 rounded-xl shadow-lg hover:shadow-amber-500/30 transition-all duration-300 flex items-center gap-2 border border-amber-400/50"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
               <path fillRule="evenodd" d="M10 3a1 1 0 011 1v5h5a1 1 0 110 2h-5v5a1 1 0 11-2 0v-5H4a1 1 0 110-2h5V4a1 1 0 011-1z" clipRule="evenodd" />
             </svg>
             Summon Hero
           </button>
+          {players.length > 0 && (
+            <button
+              onClick={startNewGame}
+              className="bg-slate-800/80 hover:bg-slate-700 text-purple-200 font-bold py-3 px-6 rounded-xl shadow-lg transition-all duration-300 flex items-center gap-2 border border-purple-400/30 hover:border-purple-300/60"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+                <path fillRule="evenodd" d="M4 2a1 1 0 011 1v2.101a7.002 7.002 0 0111.601 2.566 1 1 0 11-1.885.666A5.002 5.002 0 005.999 7H9a1 1 0 010 2H4a1 1 0 01-1-1V3a1 1 0 011-1zm.008 9.057a1 1 0 011.276.61A5.002 5.002 0 0014.001 13H11a1 1 0 110-2h5a1 1 0 011 1v5a1 1 0 11-2 0v-2.101a7.002 7.002 0 01-11.601-2.566 1 1 0 01.61-1.276z" clipRule="evenodd" />
+              </svg>
+              New Game
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">

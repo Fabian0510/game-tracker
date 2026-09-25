@@ -5,10 +5,12 @@ A fantastical board game health tracker with webcam portraits, animated damage/h
 ## Features
 
 - Track vitality and arcane shields for multiple players
-- Webcam photo capture for player portraits
+- Webcam capture or photo upload for player portraits
 - Fantastical UI with animations for damage/healing
 - Shields absorb damage before health
-- Responsive design for desktop and mobile
+- Game survives page reloads (saved in the browser's localStorage)
+- "New Game" restores every hero to full vitality while keeping names and portraits
+- Responsive design for desktop, tablets and phones (tap a portrait to change it or remove the player)
 
 ## Development
 
@@ -18,7 +20,13 @@ npm install
 
 # Run development server
 npm run dev
+
+# Lint and run unit tests
+npm run lint
+npm test
 ```
+
+Requires Node.js 20.19+ or 22.12+.
 
 ## Important: Camera Access Requires HTTPS
 
@@ -82,18 +90,7 @@ docker run -d -p 8080:80 --name realm-tracker realm-tracker
 
 ## Docker Compose (optional)
 
-Create a `docker-compose.yml` file:
-
-```yaml
-services:
-  realm-tracker:
-    build: .
-    ports:
-      - "8080:80"
-    restart: unless-stopped
-```
-
-Then run:
+A `docker-compose.yml` is included (with a commented-out HTTPS reverse proxy). Run:
 
 ```bash
 docker compose up -d
